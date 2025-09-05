@@ -5,14 +5,12 @@ from app.db.database import get_db
 from app.services.auth.jwt_handler import get_current_user
 from app.services.expense_service import (
     create_expense, get_expense, get_group_expenses, get_category_expenses,
-    update_expense, delete_expense, get_expense_shares, settle_expense_share,
-    create_settlement, get_group_settlements, get_debt_summary, optimize_settlements
+    update_expense, delete_expense, get_expense_shares, settle_expense_share
 )
 from app.services.group_service import get_group_by_slug
 from app.schemas.expense_schema import (
     ExpenseCreate, ExpenseUpdate, ExpenseOut, ExpenseWithShares,
-    ExpenseShareCreate, ExpenseShareOut, SettlementCreate, SettlementOut,
-    DebtSummary, OptimizedSettlement
+    ExpenseShareCreate, ExpenseShareOut
 )
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
@@ -176,71 +174,3 @@ def settle_expense_share_endpoint(
     return {"message": "Share settled successfully"}
 
 
-@router.post("/groups/{group_slug}/settlements", response_model=SettlementOut)
-def create_new_settlement(
-    group_slug: str,
-    settlement_data: SettlementCreate,
-    user_id: str = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
-    """Create a manual settlement"""
-    group = get_group_by_slug(db, group_slug)
-    if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
-
-    return create_settlement(db, group.id, settlement_data, user_id)
-
-
-@router.get("/groups/{group_slug}/settlements", response_model=List[SettlementOut])
-def get_group_settlements_list(
-    group_slug: str,
-    user_id: str = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
-    """Get all settlements for a group"""
-    group = get_group_by_slug(db, group_slug)
-    if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
-
-    from app.services.group_service import is_group_member
-    if not is_group_member(db, group.id, user_id):
-        raise HTTPException(status_code=403, detail="You are not a member of this group")
-
-    return get_group_settlements(db, group.id)
-
-
-@router.get("/groups/{group_slug}/debts", response_model=List[DebtSummary])
-def get_group_debt_summary(
-    group_slug: str,
-    user_id: str = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
-    """Get debt summary for all group members"""
-    group = get_group_by_slug(db, group_slug)
-    if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
-
-    from app.services.group_service import is_group_member
-    if not is_group_member(db, group.id, user_id):
-        raise HTTPException(status_code=403, detail="You are not a member of this group")
-
-    return get_debt_summary(db, group.id)
-
-
-@router.get("/groups/{group_slug}/optimize", response_model=List[OptimizedSettlement])
-def get_optimized_settlements(
-    group_slug: str,
-    user_id: str = Depends(get_current_user_id),
-    db: Session = Depends(get_db)
-):
-    """Get optimized settlement suggestions"""
-    group = get_group_by_slug(db, group_slug)
-    if not group:
-        raise HTTPException(status_code=404, detail="Group not found")
-
-    from app.services.group_service import is_group_member
-    if not is_group_member(db, group.id, user_id):
-        raise HTTPException(status_code=403, detail="You are not a member of this group")
-
-    debt_summary = get_debt_summary(db, group.id)
-    return optimize_settlements(debt_summary)

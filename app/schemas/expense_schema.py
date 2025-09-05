@@ -57,33 +57,8 @@ class ExpenseWithShares(ExpenseOut):
     shares: List[ExpenseShareOut] = []
 
 
-class SettlementBase(BaseModel):
-    from_user_id: str
-    to_user_id: str
-    amount: Decimal = Field(..., gt=0)
-
-
-class SettlementCreate(SettlementBase):
-    pass
-
-
-class SettlementOut(SettlementBase):
-    id: str
-    group_id: str
-    settled_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 class DebtSummary(BaseModel):
     user_id: str
     total_owed: Decimal
     total_owes: Decimal
     net_balance: Decimal
-
-
-class OptimizedSettlement(BaseModel):
-    from_user_id: str
-    to_user_id: str
-    amount: Decimal

@@ -3,11 +3,13 @@ from sqlalchemy import and_, func
 from fastapi import HTTPException
 from typing import List, Optional, Dict
 from decimal import Decimal
-from app.models.groups import Expense, ExpenseShare, Settlement, GroupMember
+from app.models.expenses import Expense, ExpenseShare
+from app.models.groups import GroupMember
 from app.schemas.expense_schema import (
     ExpenseCreate, ExpenseUpdate, ExpenseOut, ExpenseShareCreate,
-    ExpenseShareOut, SettlementCreate, SettlementOut, DebtSummary, OptimizedSettlement
+    ExpenseShareOut, DebtSummary
 )
+from app.schemas.settlement_schema import OptimizedSettlement
 
 
 def create_expense(db: Session, group_id: str, expense_data: ExpenseCreate, paid_by: str, shares_data: List[ExpenseShareCreate]) -> Expense:
@@ -131,41 +133,12 @@ def settle_expense_share(db: Session, share_id: str, user_id: str):
     return share
 
 
-def create_settlement(db: Session, group_id: str, settlement_data: SettlementCreate, user_id: str) -> Settlement:
-    """Create a manual settlement"""
-    from .group_service import is_group_member
-
-    # Validate both users are group members
-    if not is_group_member(db, group_id, settlement_data.from_user_id):
-        raise HTTPException(status_code=400, detail="From user is not a member of this group")
-
-    if not is_group_member(db, group_id, settlement_data.to_user_id):
-        raise HTTPException(status_code=400, detail="To user is not a member of this group")
-
-    # Users can only create settlements they're involved in
-    if user_id not in [settlement_data.from_user_id, settlement_data.to_user_id]:
-        raise HTTPException(status_code=403, detail="You can only create settlements you're involved in")
-
-    settlement = Settlement(
-        group_id=group_id,
-        from_user_id=settlement_data.from_user_id,
-        to_user_id=settlement_data.to_user_id,
-        amount=settlement_data.amount
-    )
-    db.add(settlement)
-    db.commit()
-    db.refresh(settlement)
-    return settlement
-
-
-def get_group_settlements(db: Session, group_id: str) -> List[Settlement]:
-    """Get all settlements for a group"""
-    return db.query(Settlement).filter(Settlement.group_id == group_id).all()
 
 
 def get_debt_summary(db: Session, group_id: str) -> List[DebtSummary]:
     """Calculate debt summary for all group members"""
     from .group_service import get_group_members
+    from app.models.settlements import Settlement
 
     members = get_group_members(db, group_id)
     summary = []
@@ -174,34 +147,40 @@ def get_debt_summary(db: Session, group_id: str) -> List[DebtSummary]:
         user_id = member.user_id
 
         # Calculate total owed (what others owe this user)
-        total_owed = db.query(func.sum(ExpenseShare.share_amount)).join(Expense).filter(
-            and_(
-                Expense.group_id == group_id,
-                Expense.paid_by == user_id,
-                ExpenseShare.expense_id == Expense.id,
-                ExpenseShare.is_settled == False
-            )
-        ).scalar() or Decimal('0')
+        total_owed = db.query(func.sum(ExpenseShare.share_amount))\
+            .select_from(ExpenseShare)\
+            .join(Expense, ExpenseShare.expense_id == Expense.id)\
+            .filter(
+                and_(
+                    Expense.group_id == group_id,
+                    Expense.paid_by == user_id,
+                    ExpenseShare.is_settled == False
+                )
+            ).scalar() or Decimal('0')
 
         # Calculate total owes (what this user owes to others)
-        total_owes = db.query(func.sum(ExpenseShare.share_amount)).join(Expense).filter(
-            and_(
-                Expense.group_id == group_id,
-                Expense.paid_by != user_id,
-                ExpenseShare.user_id == user_id,
-                ExpenseShare.expense_id == Expense.id,
-                ExpenseShare.is_settled == False
-            )
-        ).scalar() or Decimal('0')
+        total_owes = db.query(func.sum(ExpenseShare.share_amount))\
+            .select_from(ExpenseShare)\
+            .join(Expense, ExpenseShare.expense_id == Expense.id)\
+            .filter(
+                and_(
+                    Expense.group_id == group_id,
+                    Expense.paid_by != user_id,
+                    ExpenseShare.user_id == user_id,
+                    ExpenseShare.is_settled == False
+                )
+            ).scalar() or Decimal('0')
 
         # Subtract settlements
-        settlements_received = db.query(func.sum(Settlement.amount)).filter(
-            and_(Settlement.group_id == group_id, Settlement.to_user_id == user_id)
-        ).scalar() or Decimal('0')
+        settlements_received = db.query(func.sum(Settlement.amount))\
+            .filter(
+                and_(Settlement.group_id == group_id, Settlement.to_user_id == user_id)
+            ).scalar() or Decimal('0')
 
-        settlements_paid = db.query(func.sum(Settlement.amount)).filter(
-            and_(Settlement.group_id == group_id, Settlement.from_user_id == user_id)
-        ).scalar() or Decimal('0')
+        settlements_paid = db.query(func.sum(Settlement.amount))\
+            .filter(
+                and_(Settlement.group_id == group_id, Settlement.from_user_id == user_id)
+            ).scalar() or Decimal('0')
 
         net_balance = (total_owed - settlements_received) - (total_owes - settlements_paid)
 
