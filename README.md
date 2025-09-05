@@ -65,26 +65,26 @@ The JWT payload should contain:
 
 - `POST /groups/` - Create a new group
 - `GET /groups/` - Get user's groups
-- `GET /groups/{group_id}` - Get group details with members
-- `PATCH /groups/{group_id}` - Update group (admin only)
-- `DELETE /groups/{group_id}` - Delete group (admin only)
+- `GET /groups/{group_slug}` - Get group details with members
+- `PATCH /groups/{group_slug}` - Update group (admin only)
+- `DELETE /groups/{group_slug}` - Delete group (admin only)
 
 ### Group Members
 
-- `POST /groups/{group_id}/members` - Add member to group (admin only)
-- `DELETE /groups/{group_id}/members/{user_id}` - Remove member from group
+- `POST /groups/{group_slug}/members` - Add member to group (admin only)
+- `DELETE /groups/{group_slug}/members/{user_id}` - Remove member from group
 
 ### Categories
 
-- `POST /groups/{group_id}/categories` - Create category (admin only)
-- `GET /groups/{group_id}/categories` - Get group categories
-- `PATCH /groups/{group_id}/categories/{category_id}` - Update category (admin only)
-- `DELETE /groups/{group_id}/categories/{category_id}` - Delete category (admin only)
+- `POST /groups/{group_slug}/categories` - Create category (admin only)
+- `GET /groups/{group_slug}/categories` - Get group categories
+- `PATCH /groups/{group_slug}/categories/{category_id}` - Update category (admin only)
+- `DELETE /groups/{group_slug}/categories/{category_id}` - Delete category (admin only)
 
 ### Expenses
 
-- `POST /expenses/groups/{group_id}` - Create expense with shares
-- `GET /expenses/groups/{group_id}` - Get group expenses
+- `POST /expenses/groups/{group_slug}` - Create expense with shares
+- `GET /expenses/groups/{group_slug}` - Get group expenses
 - `GET /expenses/categories/{category_id}` - Get category expenses
 - `GET /expenses/{expense_id}` - Get expense details
 - `PATCH /expenses/{expense_id}` - Update expense
@@ -92,10 +92,10 @@ The JWT payload should contain:
 
 ### Settlements
 
-- `POST /expenses/groups/{group_id}/settlements` - Create manual settlement
-- `GET /expenses/groups/{group_id}/settlements` - Get group settlements
-- `GET /expenses/groups/{group_id}/debts` - Get debt summary
-- `GET /expenses/groups/{group_id}/optimize` - Get optimized settlement suggestions
+- `POST /settlements/groups/{group_slug}` - Create manual settlement
+- `GET /settlements/groups/{group_slug}` - Get group settlements
+- `GET /settlements/groups/{group_slug}/debts` - Get debt summary
+- `GET /settlements/groups/{group_slug}/optimize` - Get optimized settlement suggestions
 
 ## Database Schema
 
