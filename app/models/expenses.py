@@ -1,3 +1,4 @@
+import uuid
 from sqlalchemy.sql import func
 from sqlalchemy import Column, String, DateTime, DECIMAL, Text, Boolean
 from app.db.database import Base
@@ -26,8 +27,3 @@ class ExpenseShare(Base):
     user_id = Column(String, nullable=False, index=True)  # Reference to user service
     share_amount = Column(DECIMAL(10, 2), nullable=False)
     is_settled = Column(Boolean, nullable=False, default=False)
-
-
-# Import uuid and Boolean here to avoid circular imports
-import uuid
-from sqlalchemy import Boolean
