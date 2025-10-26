@@ -11,14 +11,18 @@ A microservice for managing groups, expenses, debts, and settlements between use
 - 👑 **Admin Permissions**: Group admins can manage categories and members
 - 📱 **Category Organization**: Organize expenses by categories within groups
 - 🏷️ **User-Friendly URLs**: Auto-generated slugs from group names for readable URLs
+- 🔍 **User Lookup**: Add members by phone/email with RabbitMQ integration
+- 🐰 **Message Queue**: Asynchronous user lookup via RabbitMQ
 
 ## Tech Stack
 
 - **FastAPI**: High-performance async web framework
 - **SQLAlchemy**: ORM for database operations
-- **SQLite**: Database (easily configurable for PostgreSQL/MySQL)
+- **PostgreSQL**: Primary database
 - **Pydantic**: Data validation and serialization
 - **PyJWT**: JWT token handling
+- **RabbitMQ**: Message queue for user lookup
+- **Pika**: RabbitMQ client library
 
 ## Installation
 
@@ -49,6 +53,38 @@ All endpoints require JWT authentication. Include the token in the Authorization
 Authorization: Bearer <your_jwt_token>
 ```
 
+## Add Member Request Examples
+
+### Add Member by User ID
+```json
+{
+  "user_id": "user_123",
+  "is_admin": false
+}
+```
+
+### Add Member by Phone Number
+```json
+{
+  "phone": "+1234567890",
+  "is_admin": false
+}
+```
+
+### Add Member by Email
+```json
+{
+  "email": "user@example.com",
+  "is_admin": false
+}
+```
+
+**Note**: When using phone or email, the system will:
+1. Send a lookup request to the User Service via RabbitMQ
+2. Wait for the user lookup response
+3. Add the found user to the group
+4. Return an error if the user is not found or not registered
+
 The JWT payload should contain:
 ```json
 {
@@ -72,6 +108,8 @@ The JWT payload should contain:
 ### Group Members
 
 - `POST /groups/{group_slug}/members` - Add member to group (admin only)
+  - Supports adding by `user_id`, `phone`, or `email`
+  - Uses RabbitMQ for user lookup when phone/email provided
 - `DELETE /groups/{group_slug}/members/{user_id}` - Remove member from group
 
 ### Categories

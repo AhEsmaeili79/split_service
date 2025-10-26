@@ -1,16 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Union
 from app.db.database import get_db
 from app.services.auth.jwt_handler import get_current_user
 from app.services.group_service import (
     create_group, get_group, get_group_by_slug, get_user_groups, update_group, delete_group,
-    add_member_to_group, remove_member_from_group, get_group_members,
+    add_member_to_group, add_member_to_group_enhanced, remove_member_from_group, get_group_members,
     create_group_category, get_group_categories, update_group_category, delete_group_category
 )
 from app.schemas.group_schema import (
     GroupCreate, GroupUpdate, GroupOut, GroupMemberCreate, GroupMemberOut,
-    GroupWithMembers, GroupCategoryCreate, GroupCategoryOut, GroupCategoryUpdate
+    GroupWithMembers, GroupCategoryCreate, GroupCategoryOut, GroupCategoryUpdate,
+    AsyncMemberRequestOut, PendingRequestStatusOut
 )
 
 router = APIRouter(prefix="/groups", tags=["groups"])
@@ -108,23 +109,63 @@ def delete_existing_group(
     return {"message": "Group deleted successfully"}
 
 
-@router.post("/{group_slug}/members", response_model=GroupMemberOut)
+@router.post("/{group_slug}/members", response_model=Union[GroupMemberOut, AsyncMemberRequestOut])
 def add_group_member(
     group_slug: str,
     member_data: GroupMemberCreate,
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
-    """Add a member to group (admin only)"""
+    """Add a member to group (admin only)
+    
+    Supports adding members by:
+    - user_id: Direct addition if user ID is known
+    - phone: Lookup user by phone number via RabbitMQ (async)
+    - email: Lookup user by email via RabbitMQ (async)
+    """
+    try:
+        return add_member_to_group_enhanced(db, group_slug, member_data, user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{group_slug}/members/pending/{request_id}", response_model=PendingRequestStatusOut)
+def get_pending_member_request_status(
+    group_slug: str,
+    request_id: str,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+):
+    """Get the status of a pending member addition request"""
+    from app.models.pending_requests import PendingMemberRequest
+    from app.services.group_service import get_group_by_slug, is_group_admin
+    
+    # Get group by slug
     group = get_group_by_slug(db, group_slug)
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
-
-    from app.services.group_service import is_group_admin
+    
+    # Check if requester is admin
     if not is_group_admin(db, group.id, user_id):
-        raise HTTPException(status_code=403, detail="Only group admins can add members")
-
-    return add_member_to_group(db, group.id, member_data.user_id, member_data.is_admin)
+        raise HTTPException(status_code=403, detail="Only group admins can check request status")
+    
+    # Find the pending request
+    pending_request = db.query(PendingMemberRequest).filter(
+        PendingMemberRequest.request_id == request_id,
+        PendingMemberRequest.group_id == group.id
+    ).first()
+    
+    if not pending_request:
+        raise HTTPException(status_code=404, detail="Pending request not found")
+    
+    return {
+        "request_id": pending_request.request_id,
+        "phone_or_email": pending_request.phone_or_email,
+        "status": pending_request.status,
+        "error_message": pending_request.error_message,
+        "created_at": pending_request.created_at,
+        "updated_at": pending_request.updated_at
+    }
 
 
 @router.delete("/{group_slug}/members/{member_user_id}")

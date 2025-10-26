@@ -38,18 +38,51 @@ class GroupOut(GroupBase):
 
 
 class GroupMemberBase(BaseModel):
-    user_id: str
+    user_id: Optional[str] = None
     is_admin: bool = False
 
 
 class GroupMemberCreate(GroupMemberBase):
-    pass
+    # Support both user_id and phone/email lookup
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Validate that either user_id or phone/email is provided
+        if not self.user_id and not self.phone and not self.email:
+            raise ValueError("Either user_id, phone, or email must be provided")
+        if self.user_id and (self.phone or self.email):
+            raise ValueError("Cannot provide both user_id and phone/email")
+        if self.phone and self.email:
+            raise ValueError("Cannot provide both phone and email")
 
 
 class GroupMemberOut(GroupMemberBase):
     id: str
     group_id: str
     joined_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AsyncMemberRequestOut(BaseModel):
+    """Response schema for async member addition requests"""
+    message: str
+    request_id: str
+    status: str
+    phone_or_email: str
+
+
+class PendingRequestStatusOut(BaseModel):
+    """Response schema for pending request status"""
+    request_id: str
+    phone_or_email: str
+    status: str
+    error_message: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True

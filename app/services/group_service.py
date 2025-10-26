@@ -8,6 +8,7 @@ from app.schemas.group_schema import (
     GroupMemberOut, GroupCategoryCreate, GroupCategoryOut, GroupCategoryUpdate
 )
 from app.utils.slug_utils import create_group_slug
+from app.services.user_lookup_service import get_user_lookup_service
 
 
 def create_group(db: Session, group_data: GroupCreate, created_by: str) -> Group:
@@ -103,6 +104,63 @@ def add_member_to_group(db: Session, group_id: str, user_id: str, is_admin: bool
     db.commit()
     db.refresh(member)
     return member
+
+
+def add_member_to_group_enhanced(db: Session, group_slug: str, member_data: GroupMemberCreate, admin_user_id: str):
+    """
+    Enhanced add member function that supports both user_id and phone/email lookup
+    
+    Args:
+        db: Database session
+        group_slug: Group slug
+        member_data: Member data with either user_id or phone/email
+        admin_user_id: ID of the admin making the request
+        
+    Returns:
+        GroupMemberOut: The added member (for direct user_id) or request info (for async lookup)
+    """
+    # Get group by slug
+    group = get_group_by_slug(db, group_slug)
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    # Check if requester is admin
+    if not is_group_admin(db, group.id, admin_user_id):
+        raise HTTPException(status_code=403, detail="Only group admins can add members")
+    
+    # If user_id is provided, add directly
+    if member_data.user_id:
+        return add_member_to_group(db, group.id, member_data.user_id, member_data.is_admin)
+    
+    # If phone or email is provided, initiate async lookup
+    phone_or_email = member_data.phone or member_data.email
+    if not phone_or_email:
+        raise HTTPException(status_code=400, detail="Either user_id, phone, or email must be provided")
+    
+    # Send user lookup request via RabbitMQ (async)
+    user_lookup_service = get_user_lookup_service()
+    request_id = user_lookup_service.lookup_user_by_phone_or_email(phone_or_email, group_slug)
+    
+    # Store the pending request for async processing
+    from app.models.pending_requests import PendingMemberRequest
+    pending_request = PendingMemberRequest(
+        request_id=request_id,
+        group_id=group.id,
+        phone_or_email=phone_or_email,
+        admin_user_id=admin_user_id,
+        is_admin=member_data.is_admin,
+        status="pending"
+    )
+    db.add(pending_request)
+    db.commit()
+    
+    # Return request info instead of waiting for response
+    return {
+        "message": "User lookup request submitted",
+        "request_id": request_id,
+        "status": "pending",
+        "phone_or_email": phone_or_email
+    }
 
 
 def remove_member_from_group(db: Session, group_id: str, user_id: str, remover_id: str):
