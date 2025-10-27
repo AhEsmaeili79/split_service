@@ -11,7 +11,7 @@ from app.services.group_service import (
 from app.schemas.group_schema import (
     GroupCreate, GroupUpdate, GroupOut, GroupMemberCreate, GroupMemberOut,
     GroupWithMembers, GroupCategoryCreate, GroupCategoryOut, GroupCategoryUpdate,
-    AsyncMemberRequestOut, PendingRequestStatusOut
+    AsyncMemberRequestOut, PendingRequestStatusOut, SimpleGroupMemberCreate
 )
 
 router = APIRouter(prefix="/groups", tags=["groups"])
@@ -112,19 +112,42 @@ def delete_existing_group(
 @router.post("/{group_slug}/members", response_model=Union[GroupMemberOut, AsyncMemberRequestOut])
 def add_group_member(
     group_slug: str,
-    member_data: GroupMemberCreate,
+    member_data: SimpleGroupMemberCreate,
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
     """Add a member to group (admin only)
     
-    Supports adding members by:
-    - user_id: Direct addition if user ID is known
-    - phone: Lookup user by phone number via RabbitMQ (async)
-    - email: Lookup user by email via RabbitMQ (async)
+    Request body:
+    {
+        "is_admin": boolean,
+        "identifier": "email or phone number"
+    }
+    
+    The backend will automatically identify if the identifier is a phone number or email.
     """
     try:
-        return add_member_to_group_enhanced(db, group_slug, member_data, user_id)
+        # Convert SimpleGroupMemberCreate to GroupMemberCreate for compatibility
+        # Determine if identifier is email or phone
+        identifier = member_data.identifier.strip()
+        
+        # Simple email detection (contains @ and has valid email structure)
+        is_email = "@" in identifier and "." in identifier.split("@")[-1]
+        
+        if is_email:
+            # Convert to GroupMemberCreate with email
+            group_member_data = GroupMemberCreate(
+                email=identifier,
+                is_admin=member_data.is_admin
+            )
+        else:
+            # Assume it's a phone number
+            group_member_data = GroupMemberCreate(
+                phone=identifier,
+                is_admin=member_data.is_admin
+            )
+        
+        return add_member_to_group_enhanced(db, group_slug, group_member_data, user_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

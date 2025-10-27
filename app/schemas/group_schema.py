@@ -58,6 +58,12 @@ class GroupMemberCreate(GroupMemberBase):
             raise ValueError("Cannot provide both phone and email")
 
 
+class SimpleGroupMemberCreate(BaseModel):
+    """Simple schema for adding group members with just identifier and admin status"""
+    is_admin: bool = False
+    identifier: str  # Can be email or phone number
+
+
 class GroupMemberOut(GroupMemberBase):
     id: str
     group_id: str
