@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -28,13 +28,12 @@ class GroupUpdate(BaseModel):
 
 
 class GroupOut(GroupBase):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     slug: str
     created_by: str
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class GroupMemberBase(BaseModel):
@@ -65,12 +64,11 @@ class SimpleGroupMemberCreate(BaseModel):
 
 
 class GroupMemberOut(GroupMemberBase):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     group_id: str
     joined_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class AsyncMemberRequestOut(BaseModel):
@@ -83,6 +81,8 @@ class AsyncMemberRequestOut(BaseModel):
 
 class PendingRequestStatusOut(BaseModel):
     """Response schema for pending request status"""
+    model_config = ConfigDict(from_attributes=True)
+    
     request_id: str
     phone_or_email: str
     status: str
@@ -90,15 +90,11 @@ class PendingRequestStatusOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class GroupWithMembers(GroupOut):
+    model_config = ConfigDict(from_attributes=True)
+    
     members: List[GroupMemberOut] = []
-
-    class Config:
-        from_attributes = True
 
 
 class GroupCategoryBase(BaseModel):
@@ -111,12 +107,11 @@ class GroupCategoryCreate(GroupCategoryBase):
 
 
 class GroupCategoryOut(GroupCategoryBase):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     group_id: str
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class GroupCategoryUpdate(BaseModel):

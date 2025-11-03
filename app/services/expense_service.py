@@ -195,38 +195,104 @@ def get_debt_summary(db: Session, group_id: str) -> List[DebtSummary]:
 
 
 def optimize_settlements(debt_summary: List[DebtSummary]) -> List[OptimizedSettlement]:
-    """Optimize settlements using debt simplification algorithm"""
-    # Create balance map
+    """
+    Optimize settlements using Min-Cash-Flow algorithm.
+    
+    This function uses a greedy algorithm to minimize the number of transactions
+    needed to settle all debts within a group. It transforms the debt summary
+    into a balance map and applies the Min-Cash-Flow algorithm.
+    
+    Args:
+        debt_summary: List of DebtSummary objects containing user balances
+    
+    Returns:
+        List of OptimizedSettlement objects representing minimal transactions
+    
+    Algorithm:
+        - Converts DebtSummary list to balance dictionary
+        - Applies Min-Cash-Flow greedy matching algorithm
+        - Returns optimized settlement transactions
+    """
+    from app.utils.min_cash_flow import min_cash_flow
+    
+    # Create balance map from debt summary
     balances = {debt.user_id: debt.net_balance for debt in debt_summary}
-
-    creditors = [(uid, bal) for uid, bal in balances.items() if bal > 0]
-    debtors = [(uid, -bal) for uid, bal in balances.items() if bal < 0]
-
-    creditors.sort(key=lambda x: x[1], reverse=True)
-    debtors.sort(key=lambda x: x[1], reverse=True)
-
-    settlements = []
-    i, j = 0, 0
-
-    while i < len(creditors) and j < len(debtors):
-        creditor_id, credit_amount = creditors[i]
-        debtor_id, debt_amount = debtors[j]
-
-        settlement_amount = min(credit_amount, debt_amount)
-
-        if settlement_amount > 0:
-            settlements.append(OptimizedSettlement(
-                from_user_id=debtor_id,
-                to_user_id=creditor_id,
-                amount=settlement_amount
-            ))
-
-        creditors[i] = (creditor_id, credit_amount - settlement_amount)
-        debtors[j] = (debtor_id, debt_amount - settlement_amount)
-
-        if creditors[i][1] == 0:
-            i += 1
-        if debtors[j][1] == 0:
-            j += 1
-
+    
+    # Filter out zero balances (within tolerance)
+    # The min_cash_flow function handles edge cases internally
+    active_balances = {
+        user_id: balance
+        for user_id, balance in balances.items()
+        if abs(balance) > Decimal('0.01')
+    }
+    
+    # If no active balances, return empty list
+    if not active_balances:
+        return []
+    
+    # Apply Min-Cash-Flow algorithm
+    # Returns list of dicts: [{"from": str, "to": str, "amount": Decimal}, ...]
+    settlements_dict = min_cash_flow(active_balances)
+    
+    # Convert to OptimizedSettlement objects
+    settlements = [
+        OptimizedSettlement(
+            from_user_id=settlement["from"],
+            to_user_id=settlement["to"],
+            amount=settlement["amount"]
+        )
+        for settlement in settlements_dict
+    ]
+    
     return settlements
+
+
+def calculate_balances_from_expenses(db: Session, group_id: str) -> Dict[str, Decimal]:
+    """
+    Calculate balances directly from expenses (bypassing settlements).
+    
+    This is an alternative balance calculation that computes net balances
+    directly from expense data, without considering existing settlements.
+    Useful for testing, validation, and standalone calculations.
+    
+    Args:
+        db: Database session
+        group_id: Group ID to calculate balances for
+    
+    Returns:
+        Dictionary mapping user_id -> net_balance (total_paid - total_share)
+    
+    Note:
+        This function calculates balances from expenses only, ignoring
+        any settlements that may have been recorded. Use get_debt_summary()
+        if you need balances that account for settlements.
+    """
+    expenses = get_group_expenses(db, group_id)
+    balances: Dict[str, Decimal] = {}
+    
+    for expense in expenses:
+        payer_id = expense.paid_by
+        expense_amount = expense.amount
+        
+        # Add to payer's balance (what they paid)
+        if payer_id not in balances:
+            balances[payer_id] = Decimal('0')
+        balances[payer_id] += expense_amount
+        
+        # Get shares for this expense
+        shares = get_expense_shares(db, expense.id)
+        
+        # Subtract each share from respective user's balance
+        for share in shares:
+            user_id = share.user_id
+            share_amount = share.share_amount
+            
+            if user_id not in balances:
+                balances[user_id] = Decimal('0')
+            balances[user_id] -= share_amount
+    
+    # Round all balances using Decimal quantization
+    from app.utils.min_cash_flow import round_decimal
+    balances = {user_id: round_decimal(balance) for user_id, balance in balances.items()}
+    
+    return balances
